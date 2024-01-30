@@ -1,0 +1,642 @@
+---
+title: "Reto_R.rmd"
+output: html_document
+date: "2023-11-10"
+---
+#Lectura de datos
+```{r}
+library(readxl)
+datos=read_excel('DatosFinales_LIMPIOS_2022_2023_Normales.xlsx',sheet=6)
+head(datos)
+```
+# Importamos librerías
+```{r}
+library(psych)
+library(MASS)
+library(nortest)
+```
+
+#Creamos un subset de los datos originales y hacemos algunos gráficos Q-Q para observar la distribución
+```{r}
+mydata <- subset(datos, select = -date)
+mydata=mydata
+mydata
+mydata$NO= mydata$NO/1000
+mydata$NO2 = mydata$NO2/1000
+mydata$O3 = mydata$O3/1000
+mydata$SO2 = mydata$SO2/1000
+qqnorm(mydata$PM10) 
+qqline(mydata$PM10)
+```
+# Realizamos prueba de normalidad
+$H_0$ = Hay distribución normal.
+$H_1$ = No hay distribución normal.
+
+```{r}
+library(nortest)
+ad.test(mydata$PM10)
+ad.test(mydata$SO2)
+ad.test(mydata$CO)
+ad.test(mydata$NO2)
+ad.test(mydata$O3)
+ad.test(mydata$PM2.5)
+ad.test(mydata$NO)
+```
+Se rechaza $H_0$ y concluimos que no hay distribución normal.
+
+
+# Definición de variables
+```{r}
+date=datos$date
+CO=mydata$CO
+NO=mydata$NO
+NO2=mydata$NO2 
+O3=mydata$O3
+PM10=mydata$PM10
+PM2.5=mydata$PM2.5
+SO2= mydata$SO2
+```
+
+
+# Cálculos de sesgo y curtosis de algunas variables para observar la no normalidad
+```{r}
+library(e1071)
+sesgo_speed <- skewness(CO)
+sesgo_dist <- skewness(NO)
+curtosis_speed <- kurtosis(CO)
+curtosis_dist <- kurtosis(NO)
+
+cat("Coeficiente de Sesgo en CO:", sesgo_speed, "\n")
+cat("Coeficiente de Sesgo en NO:", sesgo_dist, "\n")
+cat("Coeficiente de Curtosis en CO:", curtosis_speed, "\n")
+cat("Coeficiente de Curtosis en NO:", curtosis_dist, "\n")
+```
+
+# Correlación lineal entre las variables
+```{r}
+cor(mydata)
+```
+
+
+
+# Intentamos hacer una especie de transformación de Box-Cox, pero los datos no salieron normales
+```{r}
+# Carga de paquetes necesarios
+library(MASS)  # Para funciones de análisis multivariado
+library(car)   # Para diagnóstico de regresión
+library(ggplot2) # Para gráficos
+
+# Realizar un análisis de regresión multivariada
+model1 <- lm(PM10 ~ CO , data = datos)
+model2 <- lm(PM10 ~ NO , data = datos)
+model3 <- lm(PM10 ~ NO2 , data = datos)
+model4 <- lm(PM10 ~ O3 , data = datos)
+model5 <- lm(PM10 ~ PM2.5, data = datos)
+model6 <- lm(PM10 ~ SO2 , data = datos)
+#summary(model1)
+bc1=boxcox(model1)
+
+lambda=bc1$x[which.max(bc1$y)]
+lambda
+
+
+```
+
+
+```{r}
+d1=PM10^(-1/6)
+d2=(PM10^lambda-1)/lambda
+par(mfrow=c(3,1))
+hist(d1,col=0,main="Histograma de PM10 aproximada")
+hist(d2,col=0,main="Histograma de PM10 exacta")
+hist(PM10,col=0,main="Histograma de PM10 original")
+```
+```{r}
+library(VGAM)
+lp <- seq(0,1,0.001) # Valores de lambda propuestos
+nlp <- length(lp)
+n=length(PM10)
+D <- matrix(as.numeric(NA),ncol=2,nrow=nlp)
+d <-NA
+for (i in 1:nlp){
+  d= yeo.johnson(PM10, lambda = lp[i])
+  p=ad.test(d)
+  D[i,]=c(lp[i],p$p.value)}
+N=as.data.frame(D)
+plot(N$V1,N$V2,type="l",col="darkred",lwd=3,xlab="Lambda",ylab="Valor p (Normalidad)")
+```
+
+```{r}
+library(VGAM)
+d3<- yeo.johnson(PM10, lambda = lambda)
+hist(d3,col=0,main="Histograma de Yeo Johnson PM10",freq=FALSE)
+lines(density(d3),col="pink")
+curve(dnorm(x,mean=mean(d3),sd=sd(d3)), from=min(d3), to=max(d3), add=TRUE, col="green",lwd=2)
+```
+
+
+```{r}
+ad.test(d3)
+```
+
+```{r}
+qqnorm(d3)
+qqline(d3)
+```
+```{r}
+qqnorm(d2)
+qqline(d2)
+```
+
+```{r}
+library(nortest)
+ad.test(d1)
+```
+## Medidas estadísticas (mediana, moda, máx, mín, etc)
+
+
+```{r}
+colMeans(mydata)
+apply(mydata, 2, median)
+```
+
+```{r}
+find_mode <- function(x) {
+  u <- unique(x)
+  tab <- tabulate(match(x, u))
+  u[tab == max(tab)]
+}
+find_mode(mydata$CO)
+find_mode(mydata$NO)
+find_mode(mydata$NO2)
+find_mode(mydata$O3)
+find_mode(mydata$PM10)
+find_mode(mydata$PM2.5)
+find_mode(mydata$SO2 )
+```
+
+
+
+```{r}
+apply(mydata, 2, range)
+```
+
+```{r}
+apply(mydata, 2, var)
+apply(mydata, 2, sd)
+```
+
+
+
+```{r}
+q1_CO <- quantile(mydata$CO, 0.25)
+q2_CO <- quantile(mydata$CO, 0.5)  
+q3_CO <- quantile(mydata$CO, 0.75)
+cat("Q1:", q1_CO, "\n")
+cat("Mediana (Q2):", q2_CO, "\n")
+cat("Q3:", q3_CO, "\n")
+
+
+q1_NO <- quantile(mydata$NO, 0.25)
+q2_NO <- quantile(mydata$NO, 0.5)  
+q3_NO <- quantile(mydata$NO, 0.75)
+cat("Q1:", q1_NO, "\n")
+cat("Mediana (Q2):", q2_NO, "\n")
+cat("Q3:", q3_NO, "\n")
+
+
+q1_NO2 <- quantile(mydata$NO2, 0.25)
+q2_NO2 <- quantile(mydata$NO2, 0.5)  
+q3_NO2 <- quantile(mydata$NO2, 0.75)
+cat("Q1:", q1_NO2, "\n")
+cat("Mediana (Q2):", q2_NO2, "\n")
+cat("Q3:", q3_NO2, "\n")
+
+
+
+
+q1_O3 <- quantile(mydata$O3, 0.25)
+q2_O3 <- quantile(mydata$O3, 0.5)  
+q3_O3 <- quantile(mydata$O3, 0.75)
+cat("Q1:", q1_O3, "\n")
+cat("Mediana (Q2):", q2_O3, "\n")
+cat("Q3:", q3_O3, "\n")
+
+
+
+
+q1_PM10 <- quantile(mydata$PM10, 0.25)
+q2_PM10 <- quantile(mydata$PM10, 0.5)  
+q3_PM10 <- quantile(mydata$PM10, 0.75)
+cat("Q1:", q1_PM10, "\n")
+cat("Mediana (Q2):", q2_PM10, "\n")
+cat("Q3:", q3_PM10, "\n")
+
+
+q1_PM2.5 <- quantile(mydata$PM2.5, 0.25)
+q2_PM2.5 <- quantile(mydata$PM2.5, 0.5)  
+q3_PM2.5 <- quantile(mydata$PM2.5, 0.75)
+cat("Q1:", q1_PM2.5, "\n")
+cat("Mediana (Q2):", q2_PM2.5, "\n")
+cat("Q3:", q3_PM2.5, "\n")
+
+
+q1_SO2 <- quantile(mydata$SO2, 0.25)
+q2_SO2 <- quantile(mydata$SO2, 0.5)  
+q3_SO2 <- quantile(mydata$SO2, 0.75)
+cat("Q1:", q1_SO2, "\n")
+cat("Mediana (Q2):", q2_SO2, "\n")
+cat("Q3:", q3_SO2, "\n")
+
+
+
+
+```
+
+
+# Gráficos de bigotes de las variables
+```{r}
+boxplot(mydata$CO, main="Boxplot CO")
+boxplot(mydata$NO, main="Boxplot NO")
+boxplot(mydata$NO2, main="Boxplot NO2")
+boxplot(mydata$O3, main="Boxplot O3")
+boxplot(mydata$PM10, main="Boxplot PM10")
+boxplot(mydata$PM2.5, main="Boxplot PM2.5")
+boxplot(mydata$SO2, main="Boxplot SO2")
+```
+# Mapa de calor de las variables
+```{r,warning=false}
+correlation_matrix = cor(mydata)
+library(gplots)
+
+# Create the heatmap
+heatmap.2(correlation_matrix,
+          trace = "none",  # Turn off trace lines
+          col = colorRampPalette(c("red", "white", "cyan"))(100),  # Choose a color palette
+          main = "Mapa de calor de contaminantes",
+          Rowv = NULL,  # Exclude row dendrogram
+          Colv = NULL  
+)
+```
+# HIstograma de las variables
+```{r}
+hist(mydata$CO, ylim = c(0,1.5),  col = "lightblue",  border = "black", probability = TRUE, xlab = 'CO', ylab= 'Densidad', main = 'Histograma de CO')
+lines(density(mydata$CO), col = "red", lwd = 2)
+
+hist(mydata$NO,  col = "lightblue",  border = "black", probability = TRUE, xlab = 'NO', ylab= 'Densidad', main = 'Histograma de NO')
+lines(density(mydata$NO), col = "red", lwd = 2)
+
+hist(mydata$NO2,  col = "lightblue",  border = "black", probability = TRUE, xlab = 'NO2', ylab= 'Densidad', main = 'Histograma de NO2')
+lines(density(mydata$NO2), col = "red", lwd = 2)
+
+hist(mydata$O3,  col = "lightblue",  border = "black", probability = TRUE, xlab = 'O3', ylab= 'Densidad', main = 'Histograma de O3')
+lines(density(mydata$O3), col = "red", lwd = 2)
+
+hist(mydata$PM10,  col = "lightblue",  border = "black", probability = TRUE, xlab = 'PM10', ylab= 'Densidad', main = 'Histograma de PM10')
+lines(density(mydata$PM10), col = "red", lwd = 2)
+
+hist(mydata$PM2.5,  col = "lightblue",  border = "black", probability = TRUE, xlab = 'PM2.5', ylab= 'Densidad', main = 'Histograma de PM2.5')
+lines(density(mydata$PM2.5), col = "red", lwd = 2)
+
+hist(mydata$SO2,  col = "lightblue",  border = "black", probability = TRUE, xlab = 'SO2', ylab= 'Densidad', main = 'Histograma de SO2')
+lines(density(mydata$SO2), col = "red", lwd = 2)
+
+
+```
+# Búsqueda de valores erróneos
+```{r}
+for (i in mydata$CO){
+  if (i < 0){
+    print(i)
+  }
+}
+
+for (j in sum(!is.na(mydata$PM2.5))){
+  if (mydata$PM2.5[j] > mydata$PM10[j]){
+    print(mydata$PM2.5[j])
+    print(j)
+  }
+}
+
+```
+
+
+```{r}
+mydata_test = mydata 
+pos_num = 1 #Numero que determina la posición del dato
+sum_trans_mean_CO = 0 #Almacenamiento para realizar calculo de la media
+for (i in mydata_test$CO){
+  if (i < 0){
+    trans_num = 0 #Numero movil para encontrar la posición de los valores para calculo de media
+    while(mydata_test$CO[pos_num - trans_num] < 0){
+      trans_num = trans_num - 1 #Encontrando valor a la izquierda
+    }
+    sum_trans_mean_CO = mydata_test$CO[pos_num - trans_num]
+    trans_num = 0 #Reiniciando numero movel
+    while(mydata_test$CO[pos_num + trans_num] < 0){
+      trans_num = trans_num + 1 #Encontrando valor a la derecha
+    }
+    sum_trans_mean_CO = sum_trans_mean_CO + mydata_test$CO[pos_num - trans_num]
+    mydata_test$CO[pos_num] = sum_trans_mean_CO/2 #Cambio de dato negativo por la media de sus vecinos
+    print(mydata_test$CO[pos_num])
+  }
+  pos_num = pos_num + 1
+}
+```
+
+
+
+```{r}
+mydata_test_3 = mydata_test
+pos_num = 1 
+sum_trans_mean_PM2.5 = 0
+for (i in mydata_test_3$PM2.5){
+  if (i > mydata_test_3$PM10[pos_num]){
+      cat("Borra esta linea numero:",pos_num,"\n")
+  }
+  pos_num = pos_num + 1
+}
+```
+
+```{r}
+lines_to_remove <- c(343, 2684, 3263, 3914, 3966, 6704, 7257, 8631, 8632, 8637, 10082, 12980, 12981)
+
+for (line in lines_to_remove) {
+  mydata_test_3 <- mydata_test_3[-line, ]
+}
+```
+
+# Redefinición del dataset
+```{r}
+mydata= mydata_test_3
+```
+
+# Prueba KMO y Correlación
+
+
+```{r}
+KMO(mydata)
+R=cor(mydata)
+R
+```
+Observamos un valor KMO suficientemente bueno, pero variables con muy poca correlación, por lo que se cuestiona el uso de análisis factorial.
+#Componentes principales
+
+```{r}
+pca_prop = prcomp(mydata, scale = TRUE)
+summary(pca_prop)
+residuos_pca = pca_prop$x
+```
+
+```{r}
+scree(R)
+```
+No se consideró la aplicación de componentes principalee en nuestro problema.
+
+# Análisis factorial
+
+```{r}
+varimax=fa(R, nfactors = 3, rotate = "varimax", fm ="ml")
+varimax
+```
+```{r}
+varimax$loadings
+```
+Observamos una explicación de la varianza muy baja, por lo que no es adecuado utilizarla en nuestro problema. 
+
+
+# Clasificaciones de la calidad del aire
+```{r}
+EM = c(235, 147, 0.175, 0.250, 0.220, 15.50)
+MM = c(155, 79, 0.135, 0.230, 0.165, 13.30)
+M =  c(75, 45, 0.095, 0.210, 0.110, 11)
+A =  c(50, 25, 0.051, 0.107, 0.008, 8.75)
+```
+
+```{r}
+Calidad_aire = vector("numeric")
+PM10= mydata$PM10
+CO= mydata$CO
+NO = mydata$NO
+NO2 = mydata$NO2
+PM2.5 = mydata$PM2.5
+O3= mydata$O3
+SO2 = mydata$SO2
+for (i in 1:length(PM10)) {
+    if (PM10[i]> M[1] | PM2.5[i]> M[2] | O3[i]> M[3] | NO2[i]> M[4] | SO2[i]> M[5] | CO[i]> M[6]) { Calidad_aire = c(Calidad_aire, 3) }
+    else if (PM10[i]> A[1] | PM2.5[i]> A[2] | O3[i]> A[3] | NO2[i]> A[4] | SO2[i]> A[5] | CO[i]> A[6]) { Calidad_aire = c(Calidad_aire, 2) } 
+    else {Calidad_aire = c(Calidad_aire, 1)}
+}
+```
+
+
+# Eliminamos NO, pues no tenía normas establecidas, de acuerdo con SIMA
+
+```{r}
+library(dplyr)
+
+mydata = mydata %>%
+  mutate(Calidad_aire = Calidad_aire)
+mydata = subset(mydata, select = -NO)
+mydata$CO = scale(mydata$CO)
+mydata$NO2 = scale(mydata$NO2)
+mydata$O3 = scale(mydata$O3)
+mydata$PM10 = scale(mydata$PM10)
+mydata$PM2.5 = scale(mydata$PM2.5)
+mydata$SO2 = scale(mydata$SO2)
+```
+
+
+# Creación de conjuntos de entrenamiento y prueba 
+
+```{r}
+set.seed(100)
+library(caret)
+
+index <- createDataPartition(mydata$Calidad_aire, p = 0.8, list = FALSE)
+
+# Create training and testing sets
+v=c(0,0,0)
+vt=c(0,0,0)
+train_data <- mydata[index, ]
+test_data <- mydata[-index, ]
+for (i in 1:length(train_data$Calidad_aire)){
+  if (train_data$Calidad_aire[i]== "1")
+  {
+    vt[1] =vt[1]+ 1
+  }
+   if (train_data$Calidad_aire[i]== "2")
+  {
+    vt[2] =vt[2]+ 1
+   }
+   if (train_data$Calidad_aire[i]== "3")
+  {
+    vt[3] =vt[3]+ 1
+  }
+}
+vt[1]
+vt[2]
+vt[3]
+for (i in 1:length(test_data$Calidad_aire)){
+  if (test_data$Calidad_aire[i]== "1")
+  {
+    v[1] =v[1]+ 1
+  }
+   if (test_data$Calidad_aire[i]== "2")
+  {
+    v[2] =v[2]+ 1
+   }
+   if (test_data$Calidad_aire[i]== "3")
+  {
+    v[3] =v[3]+ 1
+  }
+}
+v[1]
+v[2]
+v[3]
+data1 <- data.frame(
+  Category = c("Buena", "Aceptable", "Mala"),
+  Frequency1 = c(v[1], v[2], v[3]),
+  Frequency2= c(vt[1], vt[2], vt[3])
+)
+custom_colors = custom_colors <- c("yellow", "green", "red")
+# Create a bar plot using ggplot2
+ggplot(data1, aes(x = Category, y = Frequency1, fill = Category)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = custom_colors) +
+  labs(title = "Frecuencia en conjunto de prueba", x = "Categoría", y = "Frecuencia") +
+  theme_minimal()
+ggplot(data1, aes(x = Category, y = Frequency2, fill = Category)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = custom_colors) +
+  labs(title = "Frecuencia en conjunto de entrenamiento", x = "Categoría", y = "Frecuencia") +
+  theme_minimal()
+```
+
+Como se puede observar:
+Hay un número adecuado de datos para cada clase.
+Hay un balanceo adecuado para las clases.
+Hay una proporción constante entre los conjuntos de entrenamiento y de prueba.
+
+
+
+```{r}
+library(mlogit)
+```
+### Significancia coeficientes
+```{r}
+mlogit_train <- dfidx(train_data, shape = "wide", choice = "Calidad_aire")
+```
+
+```{r}
+modelo_mlogit <- mlogit(Calidad_aire~ 0| PM10+PM2.5+NO2+CO+SO2+O3, data = mlogit_train)
+```
+
+```{r}
+summary(modelo_mlogit)
+```
+Como podemos observar, tenemos algunos coeficientes que no son significativos, como lo es SO2:2, SO2:3 y NO2:2. Sin embargo, la gran mayoría de los coeficientes se encuentran en la región de rechazo; es decir, rechazan la hipótesis inicial y esos coeficientes SÍ son significativos para nuestro modelo.
+
+
+# Modelo multinomial
+```{r}
+Calidad_aire_train = train_data$Calidad_aire
+length(Calidad_aire_train)
+length(CO)
+library(nnet)
+model <- multinom(train_data$Calidad_aire ~ ., data = train_data )
+model
+```
+
+## Validación de supuestos
+
+### Multicolinealidad y correlación
+```{r,warning=false}
+vif(model)
+mi_data <- subset(mydata, select = -Calidad_aire)
+R=cor(mi_data) 
+#R
+heatmap(cor(mi_data))
+```
+Como podemos observar, la mayoría de los VIF son menores a 5, lo cual es bueno. Sin embargo, PM10 tiene un VIF de 7.55, lo cual es un poco alto, pero no lo suficiente para indicar que hay multicolinealidad. Por lo anterior, decimos que este supuesto sí se cumple.
+
+
+
+### Independencia
+Debido a que no hay una prueba como tal para validar la independencia de un modelo de regresión logística, lo mejor es graficar los errores o residuos y analizar si se encuentra un patrón o no.
+
+```{r}
+library(lmtest)
+plot(c(1:length(model$residuals)),model$residuals, main = "Errores a lo largo del tiempo", ylab="Residuales",xlab="Observación", pch = 16,col='darkred')
+```
+Como podemos observar, no hay un patrón entre los residuos, por lo que podemos afirmar que estos son independientes entre sí. Se cumple el supuesto.
+
+### Predicciones del modelo
+
+```{r}
+#model  
+predictions <- predict(model, newdata = test_data,type='class')
+plot(predict(model))
+```
+Observamos que la mayoría de las predicciones del model son para la categoría 1 = Buena
+
+# Resumen del modelo, las predicciones realizadas y la matriz de confusión
+
+```{r}
+summary(model)
+test_data$Calidad_aire
+predictions
+conf_matrix <- table(predictions, test_data$Calidad_aire)
+print(conf_matrix)
+```
+Podemos observar que la variable que tiene mayor influencia en el modelo es PM10,
+seguido de PM2.5.
+## Significancia coeficientes modelo multinomial
+
+```{r}
+library(car)
+library(lmtest)
+# Assuming 'model' is your multinomial logistic regression model
+wald_test <- Anova(model, test="Wald")
+
+# Display the results
+print(wald_test)
+
+cor(mydata)
+```
+0bservamos significancia en todas, excepto SO2 (sigue siendo más útil la significancia de la librería $mlogit$).
+# Accuracy y clasificaciones correctas
+
+
+```{r}
+conf_matrix
+accuracy_1st = conf_matrix[1]/(conf_matrix[1] + conf_matrix[2] + conf_matrix[3])
+accuracy_2nd = conf_matrix[5]/ (conf_matrix[4] + conf_matrix[5] + conf_matrix[6])
+accuracy_3rd = conf_matrix[9]/ (conf_matrix[7] + conf_matrix[8] + conf_matrix[9])
+accuracy = (conf_matrix[1] + conf_matrix[5] + conf_matrix [9])/2792
+cat('Accuracy:',accuracy*100,'%\n')
+cat('Clasificados correctamente 1º clase:', accuracy_1st*100, '%\n')
+cat('Clasificados correctamente 2º clase:', accuracy_2nd*100, '%\n')
+cat('Clasificados correctamente 3º clase:', accuracy_3rd*100, '%\n')
+```
+
+Se observa que el modelo clasifica muy bien, especialmente las horas malas, las cuales son de nuestro interés.
+
+
+# Se grafican las primeras 720 horas del conjunto de prueba (predicciones vs valores reales)
+
+```{r}
+x_range <- 1:720
+length(predictions)
+length(x_range)
+length(test_data$Calidad_aire)
+variable1 <- predictions[x_range]
+variable2 <- test_data$Calidad_aire[x_range]
+plot(x_range, variable1, type = "p", col = "orange", pch = 16, ylim = c(1,3), yaxt='n',
+       xlab = "Dato n", ylab = "Calidad de aire (buena a mala)", main = "Predicciones vs valores reales")
+axis(2, at = c(1, 2, 3))
+lines(x_range, variable2, type = "p", col = "green", pch = 16)
+legend("topright", legend = c("Predicciones", "Valores reales"), col = c("orange", "green"), lty = 1, pch = 16)
+```
+
+
